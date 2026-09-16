@@ -3,7 +3,7 @@ import platform as _platform
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class Host:
     """Concrete platform facts detected for the current machine.
 
@@ -14,7 +14,7 @@ class Host:
     distro: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class HostSelector:
     """Partial platform requirements used to select tasks for a host.
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -138,7 +136,7 @@ class Task:
     name: str
     task_assets_fn: TaskAssetsFn
     host_selector: HostSelector | None = None
-    after: tuple[Task, ...] = ()
+    after: tuple["Task", ...] = ()
 
     def matches(self, host: Host) -> bool:
         return self.host_selector is None or self.host_selector.matches(host)
@@ -151,11 +149,11 @@ class Flow:
     name: str
     description: str = ""
     default: bool = False
-    after: tuple[Flow, ...] = ()
+    after: tuple["Flow", ...] = ()
     dependencies: DependencyMode = "skip"
     tasks: list[Task] = field(default_factory=list)
-    unlink_from: Flow | None = None
-    _build: Build | None = field(default=None, init=False, repr=False)
+    unlink_from: "Flow | None" = None
+    _build: "Build | None" = field(default=None, init=False, repr=False)
 
     @overload
     def task(
@@ -279,7 +277,7 @@ class Flow:
             if not getattr(asset, "retired", False) and (desktop or not asset.desktop)
         ]
 
-    def infer_unlink(self, *, command: str, description: str = "") -> Flow:
+    def infer_unlink(self, *, command: str, description: str = "") -> "Flow":
         """Create a flow that removes only the links declared by this flow."""
 
         if self._build is None:

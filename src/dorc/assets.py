@@ -236,11 +236,10 @@ class Shell(Asset):
         return True
 
 
-@dataclass(frozen=True)
 class _SameName:
     pass
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Retired:
     source: str | _SameName | None = None

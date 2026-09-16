@@ -9,19 +9,19 @@ from .assets import Asset, AssetState, Context
 from .platform import Host
 
 
-@dataclass(frozen=True)
+@dataclass
 class LoadedBuild:
     build: Build
     source_root: Path
 
 
-@dataclass(frozen=True)
+@dataclass
 class ExecutionPlan:
     flows: tuple[Flow, ...]
     prompted: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass
 class AssetResult:
     asset: Asset
     state: AssetState
