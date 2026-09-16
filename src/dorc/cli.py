@@ -15,11 +15,18 @@ def _parser() -> argparse.ArgumentParser:
     view = parser.add_mutually_exclusive_group()
     view.add_argument("--list", action="store_true", help="list flows")
     view.add_argument("--status", action="store_true", help="show flow status")
+    view.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview without changing files; recipes see DORC_DRY_RUN=1",
+    )
     parser.add_argument(
         "--platform", choices=("auto", "linux", "darwin"), default="auto"
     )
     parser.add_argument("--distro", default="auto")
-    parser.add_argument("--desktop", action="store_true")
+    desktop = parser.add_mutually_exclusive_group()
+    desktop.add_argument("--desktop", action="store_true")
+    desktop.add_argument("--no-desktop", action="store_true")
     parser.add_argument("--deps", action="store_true")
     parser.add_argument("--no-deps", action="store_true")
     return parser
@@ -42,11 +49,19 @@ def main(argv: list[str] | None = None) -> int:
 
         loaded_build = load_build(Path(arguments.build_file))
         host = resolve_host(arguments.platform, arguments.distro)
-        desktop = arguments.desktop or detect_desktop()
+        if arguments.no_desktop:
+            desktop = False
+        elif arguments.desktop:
+            desktop = True
+        else:
+            desktop = detect_desktop()
 
         if arguments.list:
             for flow in [*loaded_build.build.flows, loaded_build.build.all_flow]:
-                print(flow.name)
+                if flow.description:
+                    print(f"{flow.name}  {flow.description}")
+                else:
+                    print(flow.name)
             return 0
 
         selected_flow = loaded_build.build.resolve(arguments.flow)
@@ -94,11 +109,15 @@ def main(argv: list[str] | None = None) -> int:
             home=Path.home(),
             host=host,
             desktop=desktop,
+            dry_run=arguments.dry_run,
         )
 
         asset_results = runner.status(plan) if arguments.status else runner.run(plan)
         for asset_result in asset_results:
             print(asset_result.asset.name, asset_result.state.message)
+            if not arguments.status:
+                for action in asset_result.actions:
+                    print(f"  {action}")
 
         return 1 if any(not result.state.ok for result in asset_results) else 0
 

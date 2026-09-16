@@ -11,6 +11,20 @@ class Context:
     source_root: Path
     home: Path
     desktop: bool
+    dry_run: bool = False
+
+    def command_env(self) -> dict[str, str]:
+        """Environment for recipe and shell processes.
+
+        ``HOME`` is the configured home so tests can sandbox writes.
+        ``DORC_DRY_RUN`` is ``1`` or ``0`` so recipe helpers can no-op.
+        """
+
+        return {
+            **os.environ,
+            "HOME": str(self.home),
+            "DORC_DRY_RUN": "1" if self.dry_run else "0",
+        }
 
     def _expand_home(self, path: str) -> Path:
         """Expand a leading ``~`` against the configured home.
@@ -90,8 +104,9 @@ class CreateDir(Asset):
 
     def apply(self, context: Context) -> list[str]:
         target = context.target(self.path)
-        target.mkdir(parents=True, exist_ok=True)
-        os.chmod(target, self.mode)
+        if not context.dry_run:
+            target.mkdir(parents=True, exist_ok=True)
+            os.chmod(target, self.mode)
         return [f"create {target}"]
 
 
@@ -122,12 +137,17 @@ class Link(Asset):
         target_path = context.target(self.target)
         if not source_path.exists():
             raise FileNotFoundError(f"missing source {source_path}")
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        if target_path.exists() or target_path.is_symlink():
-            if target_path.is_dir() and not target_path.is_symlink():
-                raise IsADirectoryError(f"refusing to replace directory: {target_path}")
-            target_path.unlink()
-        target_path.symlink_to(source_path, target_is_directory=source_path.is_dir())
+        if not context.dry_run:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.exists() or target_path.is_symlink():
+                if target_path.is_dir() and not target_path.is_symlink():
+                    raise IsADirectoryError(
+                        f"refusing to replace directory: {target_path}"
+                    )
+                target_path.unlink()
+            target_path.symlink_to(
+                source_path, target_is_directory=source_path.is_dir()
+            )
         return [f"link {target_path} -> {source_path}"]
 
 
@@ -154,7 +174,8 @@ class Unlink(Asset):
     def apply(self, context: Context) -> list[str]:
         target = context.target(self.target)
         if not self.status(context).ok:
-            target.unlink()
+            if not context.dry_run:
+                target.unlink()
             return [f"unlink {target}"]
         return []
 
@@ -177,18 +198,11 @@ class Recipe(Asset):
         completed_process = subprocess.run(
             ["bash", str(script)],
             cwd=context.source_root,
-            env={**os.environ, "HOME": str(context.home)},
-            text=True,
-            capture_output=True,
+            env=context.command_env(),
             check=False,
         )
         if completed_process.returncode:
-            message = (
-                completed_process.stderr.strip()
-                or completed_process.stdout.strip()
-                or f"recipe failed: {self.path}"
-            )
-            raise RuntimeError(message)
+            raise RuntimeError(f"recipe failed: {self.path}")
         return [f"recipe {self.path}"]
 
     @property
@@ -210,18 +224,11 @@ class Shell(Asset):
             self.command,
             shell=True,
             cwd=context.source_root,
-            env={**os.environ, "HOME": str(context.home)},
-            text=True,
-            capture_output=True,
+            env=context.command_env(),
             check=False,
         )
         if completed_process.returncode:
-            message = (
-                completed_process.stderr.strip()
-                or completed_process.stdout.strip()
-                or "shell command failed"
-            )
-            raise RuntimeError(message)
+            raise RuntimeError(f"shell command failed: {self.name}")
         return [self.name]
 
     @property

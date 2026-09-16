@@ -89,9 +89,12 @@ class Runner:
         home: Path,
         host: Host,
         desktop: bool,
+        dry_run: bool = False,
     ) -> None:
         self.host = host
-        self.context = Context(source_root=source_root, home=home, desktop=desktop)
+        self.context = Context(
+            source_root=source_root, home=home, desktop=desktop, dry_run=dry_run
+        )
 
     def status(self, plan: ExecutionPlan) -> list[AssetResult]:
         """Report each selected asset's current state without changing it."""
@@ -114,9 +117,14 @@ class Runner:
                 # Report the state after applying so output describes the final
                 # filesystem rather than the condition that triggered a change.
                 # Skip the redundant re-check when nothing was applied.
-                state_after_apply = (
-                    asset.status(self.context) if needs_apply else state_before_apply
-                )
+                # Dry-run does not mutate dirs/links, so keep the pre-apply
+                # message and treat the preview as successful unless apply raised.
+                if needs_apply and not self.context.dry_run:
+                    state_after_apply = asset.status(self.context)
+                elif self.context.dry_run:
+                    state_after_apply = AssetState(True, state_before_apply.message)
+                else:
+                    state_after_apply = state_before_apply
                 results.append(AssetResult(asset, state_after_apply, actions))
         return results
 
