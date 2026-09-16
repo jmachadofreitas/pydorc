@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from dorc import Build, create_dir, links, recipe, retired, shell
-from dorc.assets import Asset, Shell
+from dorc.assets import Asset, Context, Shell
 from dorc.cli import main
 from dorc.platform import Host, darwin, linux, ubuntu
 from dorc.runtime import Planner, Runner, load_build
@@ -110,6 +110,27 @@ def test_shell():
     assert asset.command == "printf hello"
 
 
+def test_shell_streams_output(tmp_path: Path, capfd):
+    """Recipe and shell apply inherit stdout instead of capturing it."""
+    asset = shell(name="hello", command="printf hello")
+    asset.apply(Context(source_root=tmp_path, home=tmp_path, desktop=False))
+
+    assert capfd.readouterr().out == "hello"
+
+
+def test_recipe_failure_keeps_live_log(tmp_path: Path, capfd):
+    """A failed recipe still prints its log, then raises a short error."""
+    recipes = tmp_path / "recipes"
+    recipes.mkdir()
+    (recipes / "fail").write_text("#!/usr/bin/env bash\nprintf boom >&2\nexit 1\n")
+    asset = recipe("fail")[0]
+
+    with pytest.raises(RuntimeError, match="recipe failed: fail"):
+        asset.apply(Context(source_root=tmp_path, home=tmp_path, desktop=False))
+
+    assert "boom" in capfd.readouterr().err
+
+
 def test_flow_dependencies():
     """A flow can skip, prompt for, or run its predecessor flows."""
     build = Build("test")
@@ -186,5 +207,125 @@ def test_list(capsys):
         "directories",
         "install",
         "unlink-install",
-        "all",
+        "all  Run all ordinary flows.",
     ]
+
+
+def test_cli_prints_actions(tmp_path: Path, monkeypatch, capsys):
+    """Apply output includes the actions collected for each asset."""
+    monkeypatch.setattr("dorc.cli.Path.home", lambda: tmp_path)
+
+    assert (
+        main(
+            [
+                "directories",
+                str(FIXTURE),
+                "--no-deps",
+                "--platform",
+                "linux",
+                "--distro",
+                "ubuntu",
+                "--no-desktop",
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert f"  create {tmp_path / '.config'}" in output
+    assert f"  create {tmp_path / '.local/bin'}" in output
+
+
+def test_dry_run(tmp_path: Path, monkeypatch, capsys):
+    """Dry-run skips mutating dirs/links and sets DORC_DRY_RUN for commands."""
+    build = Build("test")
+    flow = build.flow("install", default=True)
+    (tmp_path / "dots").mkdir()
+    (tmp_path / "dots" / "gitconfig").write_text("name = test\n")
+
+    @flow.task
+    def common():
+        return [
+            create_dir("~/.config"),
+            links("dots", "~", {".gitconfig": "gitconfig"}),
+            shell(
+                name="record-dry-run",
+                command='printf "$DORC_DRY_RUN" > "$HOME/.dry-run"',
+            ),
+        ]
+
+    host = Host("linux", "ubuntu")
+    dry_runner = Runner(
+        source_root=tmp_path,
+        home=tmp_path,
+        host=host,
+        desktop=False,
+        dry_run=True,
+    )
+    results = dry_runner.run(Planner().plan(flow))
+
+    assert not (tmp_path / ".config").exists()
+    assert not (tmp_path / ".gitconfig").exists()
+    assert (tmp_path / ".dry-run").read_text() == "1"
+    assert [result.actions[0] for result in results] == [
+        f"create {tmp_path / '.config'}",
+        f"link {tmp_path / '.gitconfig'} -> {tmp_path / 'dots' / 'gitconfig'}",
+        "record-dry-run",
+    ]
+    assert all(result.state.ok for result in results)
+
+    real_runner = Runner(
+        source_root=tmp_path, home=tmp_path, host=host, desktop=False
+    )
+    real_runner.run(Planner().plan(flow))
+
+    assert (tmp_path / ".config").is_dir()
+    assert (tmp_path / ".gitconfig").is_symlink()
+    assert (tmp_path / ".dry-run").read_text() == "0"
+
+    monkeypatch.setattr("dorc.cli.Path.home", lambda: tmp_path / "cli-home")
+    (tmp_path / "cli-home").mkdir()
+    assert (
+        main(
+            [
+                "install",
+                str(FIXTURE),
+                "--dry-run",
+                "--no-deps",
+                "--platform",
+                "linux",
+                "--distro",
+                "ubuntu",
+                "--no-desktop",
+            ]
+        )
+        == 0
+    )
+    assert not (tmp_path / "cli-home" / ".bashrc").exists()
+    assert "  link " in capsys.readouterr().out
+
+
+def test_no_desktop(tmp_path: Path, monkeypatch, capsys):
+    """--no-desktop excludes GUI assets even when a desktop session is detected."""
+    build_file = tmp_path / "build.py"
+    build_file.write_text(
+        "from dorc import Build, create_dir\n"
+        "build = Build('test')\n"
+        "flow = build.flow('install', default=True, description='Link configs.')\n"
+        "\n"
+        "@flow.task\n"
+        "def common():\n"
+        "    return [create_dir('~/.config'), create_dir('~/Applications', desktop=True)]\n"
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr("dorc.cli.detect_desktop", lambda: True)
+    monkeypatch.setattr("dorc.cli.Path.home", lambda: home)
+
+    assert main(["install", str(build_file), "--status"]) == 1
+    assert "~/Applications" in capsys.readouterr().out
+
+    assert main(["install", str(build_file), "--status", "--no-desktop"]) == 1
+    output = capsys.readouterr().out
+    assert "~/.config" in output
+    assert "~/Applications" not in output
