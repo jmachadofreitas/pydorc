@@ -329,3 +329,28 @@ def test_no_desktop(tmp_path: Path, monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "~/.config" in output
     assert "~/Applications" not in output
+
+
+def test_version_flag(capsys):
+    """`--version` reports the installed distribution version and exits 0."""
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--version"])
+
+    assert exit_info.value.code == 0
+
+    printed = capsys.readouterr().out.strip()
+    assert printed.startswith("dorc ")
+    assert printed.split()[1]
+
+
+def test_platform_selectors_are_top_level():
+    """Build files can take selectors from `dorc` without the submodule import."""
+
+    import dorc
+
+    assert (dorc.linux, dorc.darwin, dorc.ubuntu) == (linux, darwin, ubuntu)
+    assert dorc.Host is Host
+
+    for name in ("linux", "darwin", "ubuntu", "Host", "__version__"):
+        assert name in dorc.__all__
