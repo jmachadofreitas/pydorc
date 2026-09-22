@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import __version__
 from .platform import detect_desktop, resolve_host
 from .runtime import Planner, Runner, load_build
 
@@ -10,6 +11,9 @@ def _parser() -> argparse.ArgumentParser:
     """Create the parser for flow commands and their inspection flags."""
 
     parser = argparse.ArgumentParser(prog="dorc")
+    parser.add_argument(
+        "--version", action="version", version=f"dorc {__version__}"
+    )
     parser.add_argument("flow", nargs="?", default="default")
     parser.add_argument("build_file", nargs="?", default="build.py")
     view = parser.add_mutually_exclusive_group()
