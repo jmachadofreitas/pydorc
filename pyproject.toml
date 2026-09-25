@@ -1,7 +1,37 @@
+# Distribution name is `pydorc` (the `dorc` name on PyPI is held by an
+# abandoned 0.0.0 placeholder). The import package and the CLI are both
+# still `dorc`.
 [project]
-name = "dorc"
+name = "pydorc"
 version = "0.1.0"
+description = "Python-first dotfile orchestration: declare flows of directories, symlinks and bash recipes in a build.py"
+readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "João Machado de Freitas" }]
+keywords = ["dotfiles", "dotfile-manager", "symlink", "bootstrap", "task-runner", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/jmachadofreitas/pydorc"
+Repository = "https://github.com/jmachadofreitas/pydorc"
+Issues = "https://github.com/jmachadofreitas/pydorc/issues"
 
 [project.scripts]
 dorc = "dorc.cli:main"
@@ -11,8 +41,10 @@ dev = [
     "pytest>=8.0",
 ]
 
+# setuptools >= 77 is required for the PEP 639 `license` / `license-files`
+# fields used above.
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
